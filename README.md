@@ -2,6 +2,7 @@
 Implemented Aduro H2 Pellet Oven in OpenHab 2.5.x with NBE pellet burner V7/V13 UDP protocol test client
 
 This project contain example files for an OpenHab 2.5.x implementation of monitoring and controlling an ADURO H2 pellet oven, using the NBEtest tool from motoz.
+As the ADURO H2 and the H1 model are more or less identical, these examples should work just as fine with a H1 - and potentially also other ADURO Hybrid ovens.
 
 The project is use-as-is and inspirational-only for potential users. I offer no support. The rules file is the key to the setup - and my rules could most certainly be coded better - but this works for me and I have limited time to polish ;-)
 
