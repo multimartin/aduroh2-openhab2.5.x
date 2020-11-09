@@ -1,0 +1,126 @@
+
+Group			AduroTemps			(All)
+Group			AduroHighTemps		(All)
+Group			AduroUnknownTemps	(All)
+Group			AduroFeeds			(All)
+
+
+Switch			AduroH2_AutoAlarmSolveSwitch		"Pellet oven Auto-restart [%s]"  <switch>
+Switch			AduroH2_Switch						"Pellet oven [%s]"  <fire>
+Switch			AduroH2_Alarm						"Pellet oven Alarm [%s]"  <error>
+Switch			AduroH2_OnOFF						"Aduro H2 ON/OFF Status [%s]"
+
+
+Switch	AduroH2_set_runstatusON																		{channel="exec:command:aduroh2_set_runstatusON:run"}
+String	AduroH2_runstatusON_string																	{channel="exec:command:aduroh2_set_runstatusON:output"}
+
+Switch	AduroH2_set_runstatusOFF																	{channel="exec:command:aduroh2_set_runstatusOFF:run"}
+String	AduroH2_runstatusOFF_string																	{channel="exec:command:aduroh2_set_runstatusOFF:output"}
+
+Switch	aduroh2_opdata_Run_switch																	{channel="exec:command:aduroh2_get_opdata:run"}
+String	aduroh2_opdata_Output_str																	{channel="exec:command:aduroh2_get_opdata:output"}
+
+Switch	aduroh2_setboiler_Run_switch																{channel="exec:command:aduroh2_get_setboiler:run"}
+String	aduroh2_setboiler_Output_str																{channel="exec:command:aduroh2_get_setboiler:output"}
+
+Switch	aduroh2_eventlog_Run_switch																	{channel="exec:command:aduroh2_get_eventlog:run"}
+String	aduroh2_eventlog_Output_str																	{channel="exec:command:aduroh2_get_eventlog:output"}
+
+
+Switch 	aduroh2_settemp_Run_switch 																	{channel="exec:command:aduroh2_set_settemp:run", autoupdate="false"}
+String 	aduroh2_settemp_Run_Args 																	{channel="exec:command:aduroh2_set_settemp:input"}
+String	aduroh2_settemp_Output_str																	{channel="exec:command:aduroh2_set_settemp:output"}
+
+Number	aduroh2_Xsettemp					"AduroH2 Settemp [%.1f °C]"		<temperature>				
+
+DateTime	aduroh2_opdata_lastupdate		"AduroH2 Opdata Last Updated [%1$td.%1$tm.%1$tY %1$tH:%1$tM]"
+DateTime	aduroh2_setboiler_lastupdate	"AduroH2 Setboiler Last Updated [%1$td.%1$tm.%1$tY %1$tH:%1$tM]"
+DateTime	aduroh2_eventlog_lastupdate		"AduroH2 Eventlog Last Updated [%1$td.%1$tm.%1$tY %1$tH:%1$tM]"
+
+String	aduroh2_eventlog_lastmessages1	"AduroH2 Seneste Event [%s]"            
+String	aduroh2_eventlog_lastmessages2	"AduroH2 Næstseneste Event [%s]"            
+String	aduroh2_eventlog_lastmessages3	"AduroH2 Tredieseneste Event [%s]"            
+
+
+Number	aduroh2_Xsetboiler_temp_Upperlimit	"AduroH2 Upper limit [%.1f °C]"						<temperature>	(AduroTemps)    
+Number	aduroh2_Xsetboiler_temp_Lowerlimit	"AduroH2 Lower Limit  [%.1f °C]"					<temperature>	(AduroTemps)   
+String	aduroh2_Xopdata_state_text          "AduroH2 Status [%s]"
+Number	aduroh2_Xsetstate					"AduroH2 Status [MAP(aduroh2.map):%s]"				<fire>
+ 
+Number	aduroh2_setboiler_temp           "AduroH2 Requested SetTemp  [%.1f °C]"					<temperature>	    
+Number	aduroh2_setboiler_diff_over      "AduroH2 Diff over [%.0f °C]"    
+Number	aduroh2_setboiler_diff_under     "AduroH2 Diff under [%.0f °C]"    
+Number	aduroh2_setboiler_reduction      "AduroH2 Reduction [%.0f]"    
+Number	aduroh2_setboiler_ext_stop_temp  "AduroH2 Ext Stop Temp [%.1f °C]"    
+Number	aduroh2_setboiler_ext_stop_diff  "AduroH2 Ext Stop Diff [%.1f °C]"    
+Number	aduroh2_setboiler_ext_switch     "AduroH2 Ext Switch [%.0f]"    
+Number	aduroh2_setboiler_ext_off_delay  "AduroH2 Ext Off Delay [%.0f]"   
+Number	aduroh2_setboiler_ext_on_delay   "AduroH2 Ext On Delay [%.0f]"   
+Number	aduroh2_setboiler_timer          "AduroH2 Timer [%.0f]"   
+String	aduroh2_setboiler_monday         "AduroH2 Monday [%s]"    
+String	aduroh2_setboiler_tuesday        "AduroH2 Tuesday [%s]"    
+String	aduroh2_setboiler_wednesday      "AduroH2 Wednesday [%s]"    
+String	aduroh2_setboiler_thursday       "AduroH2 Thursday [%s]"    
+String	aduroh2_setboiler_friday         "AduroH2 Friday [%s]"    
+String	aduroh2_setboiler_saturday       "AduroH2 Saturday [%s]"    
+String	aduroh2_setboiler_sunday         "AduroH2 Sunday [%s]"    
+Number	aduroh2_setboiler_min_return     "AduroH2 Min Return [%.0f]"   
+
+String	aduroh2_opdata_time             "AduroH2 Seneste Data [%s]"
+Number	aduroh2_opdata_boiler_temp      "AduroH2 Room Temp [%.1f °C]"								<temperature>	(AduroTemps)
+Number	aduroh2_opdata_smoke_temp       "AduroH2 Smoke Temp [%.1f °C]"								<temperature>	(AduroHighTemps)
+Number	aduroh2_opdata_return_temp      "AduroH2 Return Temp [%.1f °C]"						<temperature>	(AduroUnknownTemps)
+Number	aduroh2_opdata_dhw_temp         "AduroH2 DHW Temp [%.1f °C]"						<temperature>	(AduroHighTemps)
+Number	aduroh2_opdata_external_temp    "AduroH2 External Temp [%.1f °C]"					<temperature>	(AduroUnknownTemps)
+Number	aduroh2_opdata_t6_temp          "AduroH2 T6 Temp [%.1f °C]"						<temperature>	(AduroUnknownTemps)
+Number	aduroh2_opdata_t7_temp          "AduroH2 T7 Temp [%.1f °C]"						<temperature>	(AduroUnknownTemps)
+Number	aduroh2_opdata_distance         "AduroH2 Distance [%.0f]"
+Number	aduroh2_opdata_photo_level      "AduroH2 Photo Level [%.0f]"
+Number	aduroh2_opdata_shaft_temp       "AduroH2 Shaft Temp [%.1f °C]"							<temperature>	(AduroHighTemps)
+Number	aduroh2_opdata_milli_ampere     "AduroH2 Milliampere [%.0f mAmp]"		
+Number	aduroh2_opdata_oxygen           "AduroH2 Oxygen [%.1f]"
+Number	aduroh2_opdata_flow1            "AduroH2 Flow1 [%.0f]"
+Number	aduroh2_opdata_flow2            "AduroH2 Flow2 [%.0f]"
+Number	aduroh2_opdata_flow3            "AduroH2 Flow3 [%.0f]"
+Number	aduroh2_opdata_flow4            "AduroH2 Flow4 [%.0f]"
+Number	aduroh2_opdata_power_pct        "AduroH2 Power [%.0f %%]"
+Number	aduroh2_opdata_power_kw         "AduroH2 Power [%.1f Kw]"
+Number	aduroh2_opdata_oxygen_ref       "AduroH2 Oxygen Ref [%.1f]"
+Number	aduroh2_opdata_boiler_ref       "AduroH2 Requested Temp [%.1f °C]"							<temperature>	
+Number	aduroh2_opdata_mean_out_temp    "AduroH2 Mean Out Temp [%.1f °C]"						<temperature>
+Number	aduroh2_opdata_dhw_ref          "AduroH2 DHW Ref [%.1f]"
+Number	aduroh2_opdata_forward_ref      "AduroH2 Forward Ref [%.1f]"
+Number	aduroh2_opdata_sun2_temp        "AduroH2 Sun2 Temp [%.1f °C]"						<temperature>	(AduroUnknownTemps)
+Number	aduroh2_opdata_sun_dhw_temp     "AduroH2 Sun DHW Temp [%.1f °C]"					<temperature>	(AduroUnknownTemps)
+Number	aduroh2_opdata_sun_surplus_temp "AduroH2 Sun Surplus Temp [%.1f °C]"				<temperature>	(AduroUnknownTemps)
+Number	aduroh2_opdata_pressure         "AduroH2 Pressure [%.2f]"
+Number	aduroh2_opdata_air_flow         "AduroH2 Air Flow [%.0f]"
+Number	aduroh2_opdata_sun_temp         "AduroH2 Sun Temp [%.1f °C]"							<temperature>
+Number	aduroh2_opdata_house_valve_state "AduroH2 Valve State [%.0f]"
+Number	aduroh2_opdata_chill_out        "AduroH2 Chill Out [%.1f]"
+Number	aduroh2_opdata_sun_pumpspeed    "AduroH2 Sun Pump Speed [%.0f]"
+Number	aduroh2_opdata_sun_power_kw     "AduroH2 Sun Power [%.1f Kw]"
+Number	aduroh2_opdata_cloud_level      "AduroH2 Cloud Level [%.0f]"
+Number	aduroh2_opdata_forward_temp     "AduroH2 Forward Temp  [%.1f °C]"					<temperature>	(AduroUnknownTemps)
+Number	aduroh2_opdata_back_pressure    "AduroH2 Back Pressure [%.0f]"
+Number	aduroh2_opdata_t1_temp          "AduroH2 T1 Temp  [%.1f °C]"						<temperature>	(AduroUnknownTemps)
+Number	aduroh2_opdata_air_quality      "AduroH2 Air Quality [%.0f]"
+Number	aduroh2_opdata_feed_low         "AduroH2 Feed Low [%.0f]"												(AduroFeeds)
+Number	aduroh2_opdata_feed_medium      "AduroH2 Feed Medium [%.0f]"											(AduroFeeds)
+Number	aduroh2_opdata_feed_high        "AduroH2 Feed High [%.0f]"												(AduroFeeds)
+Number	aduroh2_opdata_content          "AduroH2 Content [%.0f]"
+Number	aduroh2_opdata_state            "AduroH2 Status [MAP(aduroh2state.map):%s]"
+Number	aduroh2_opdata_substate         "AduroH2 Substatus [%.0f]"
+Number	aduroh2_opdata_boiler_pump_state "AduroH2 Boiler Pump Status [%.0f]"
+Number	aduroh2_opdata_dhw_valve_state  "AduroH2 DHW Valve Status [%.0f]"
+Number	aduroh2_opdata_house_pump_state "AduroH2 House Pump Status [%.0f]"
+Number	aduroh2_opdata_sun_pump_state   "AduroH2 Sun Pump Status [%.0f]"
+Number	aduroh2_opdata_sun_surplus_state "AduroH2 Sun Surplus Status [%.0f]"
+Number	aduroh2_opdata_ashbox_minutes   "AduroH2 Ashbox Minutes [%.1f]"
+Number	aduroh2_opdata_ashbox_contact   "AduroH2 Ashbox Contact [%.1f]"
+Number	aduroh2_opdata_internet_uptime  "AduroH2 Internet Uptime [%.0f]"
+Number	aduroh2_opdata_off_on_alarm     "AduroH2 OFF/ON/Alarm [MAP(aduroh2offonalarm.map):%s]"
+Number	aduroh2_opdata_contact2         "AduroH2 Contact2 [%.0f]"
+Number	aduroh2_opdata_corr_medium      "AduroH2 Corr Medium [%.0f]"
+Number	aduroh2_opdata_compressor_clean "AduroH2 Compressor Clean [%.1f]"
+Number	aduroh2_opdata_fan_speed        "AduroH2 Fan Speed [%.1f]"
