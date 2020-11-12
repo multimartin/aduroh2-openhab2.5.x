@@ -1,5 +1,5 @@
 Thing exec:command:aduroh2_set_runstatusON [command="python /etc/openhab2/nbe/client.py -a 192.168.178.123 -p <password> -s <serial> set settings/misc/start 1", interval=0, timeout=5, autorun=false]
-Thing exec:command:aduroh2_set_runstatusOFF [command="python /etc/openhab2/nbe/client.py -a 192.168.178.123 -p <password> -s 48435 set settings/misc/stop 1", interval=0, timeout=5, autorun=false]
+Thing exec:command:aduroh2_set_runstatusOFF [command="python /etc/openhab2/nbe/client.py -a 192.168.178.123 -p <password> -s <serial> set settings/misc/stop 1", interval=0, timeout=5, autorun=false]
 Thing exec:command:aduroh2_set_settemp [command="python /etc/openhab2/nbe/client.py -a 192.168.178.123 -p <password> -s <serial> set settings/boiler/temp %2$s", interval=0, timeout=5, autorun=false]
 Thing exec:command:aduroh2_get_opdata [command="python /etc/openhab2/nbe/client.py -a 192.168.178.123 -s <serial> get operating_data", interval=0, timeout=5, autorun=false]
 Thing exec:command:aduroh2_get_setboiler [command="python /etc/openhab2/nbe/client.py -a 192.168.178.123 -s <serial> get settings/boiler", interval=0, timeout=5, autorun=false]
