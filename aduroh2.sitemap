@@ -1,39 +1,23 @@
 sitemap default label="AduroH2" {
 
-	Frame label="AduroH2" {
-		Group item=aduroh2_Xopdata_state_text   label="AduroH2" icon="info" {
-					Text item=AduroH2_Switch
-					Text item=AduroH2_Alarm
-					Switch item=AduroH2_AutoAlarmSolveSwitch
+			Group item=aduroh2_Xopdata_state_text   label="AduroH2" icon="info" {
+						Default item=aduroh2_Xonoff_switch
+						Setpoint item=aduroh2_Xsettemp minValue=15 maxValue=25 step=1
+						Default item=AduroH2_AutoAlarmSolveSwitch
+						Default item=AduroH2_NightPause
+						Switch item=AduroH2_InitWoodBurn mappings=[ON="TÆND", OFF="OFF"]
 
-					Setpoint item=aduroh2_Xsettemp minValue=15 maxValue=25 step=1
-					Selection item=aduroh2_Xsetstate mappings=[0="OFF",1="Warm and maintain settemp",2="Warm Level1",3="Warm Level2",4="Warm Level3"] // 2-4 currently not implemented
-					Text item=aduroh2_opdata_boiler_temp
-					Default item=aduroh2_Xopdata_state_text 
+						Text item=aduroh2_opdata_boiler_temp
+						Default item=aduroh2_Xopdata_state_text 
+						Text item=AduroH2_Alarm
+						Text item=AduroH2_Switch
 
-//					Default item=aduroh2_opdata_lastupdate	
-//					Default item=aduroh2_setboiler_lastupdate
-//					Default item=aduroh2_eventlog_lastupdate	
-					
-					Chart item=AduroTemps period=12h refresh=18000  legend=true
-					Chart item=AduroHighTemps period=12h refresh=18000  legend=true 
-					Chart item=aduroh2_opdata_milli_ampere period=3D refresh=18000 legend=true
+						Chart item=AduroTemps period=3D refresh=18000  legend=true
+						Chart item=aduroh2_opdata_smoke_temp period=3D refresh=18000  legend=true 
+						Chart item=aduroh2_opdata_milli_ampere period=3D refresh=18000 legend=true
+						Chart item=aduroh2_opdata_power_pct period=3D refresh=18000  legend=true
 
-					Default item=aduroh2_eventlog_lastmessages1
-					Default item=aduroh2_eventlog_lastmessages2
-					Default item=aduroh2_eventlog_lastmessages3
-				
-					Chart item=aduroh2_opdata_milli_ampere           period=12h refresh=18000  legend=true
-					Chart item=aduroh2_opdata_oxygen                 period=12h refresh=18000  legend=true
-					Chart item=aduroh2_opdata_power_pct              period=12h refresh=18000  legend=true
-					Chart item=aduroh2_opdata_power_kw               period=12h refresh=18000  legend=true
-					Chart item=aduroh2_opdata_oxygen_ref             period=12h refresh=18000  legend=true
-					Chart item=aduroh2_opdata_boiler_ref             period=12h refresh=18000  legend=true
-					Chart item=aduroh2_opdata_house_valve_state      period=12h refresh=18000  legend=true
-					Chart item=aduroh2_opdata_state                  period=12h refresh=18000  legend=true
-					Chart item=aduroh2_opdata_substate               period=12h refresh=18000  legend=true
-		}
-	}
+			}
 
 	
 }
