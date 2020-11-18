@@ -1,35 +1,92 @@
-
 var Timer setboilerTimer = null
-var Timer eventlogTimer = null
 var Timer waitTimer = null
 var Timer AduroNightTimer = null
 var Timer RestartTimer = null
 var Timer Restart2Timer = null
+var Timer AduroH2_runstatusON_stringTimer = null
+var Timer AduroH2_runstatusOFF_stringTimer = null
+var Timer aduroh2_settemp_Output_strTimer = null
+var Timer InitWoodBurnTimer1 = null
+var Timer InitWoodBurnTimer2 = null
 
-
-rule "process ON/OFF status"
+rule "process Aduro InitWoodBurn ON"
 when
-	Item AduroH2_OnOFF changed from OFF to ON
+	Item AduroH2_InitWoodBurn changed from OFF to ON
 then
-	logInfo("ADURO", "Send runstatus = ON")
-	AduroH2_set_runstatusON.sendCommand(ON)
+	aduroh2_InitWoodBurn_Stored_Xonoff_switch.postUpdate(aduroh2_Xonoff_switch.state)	// Store existing state of oven (ON or OFF) so that it can be set back after InitWoodBurn is done/finished
+	aduroh2_InitWoodBurn_Stored_Xsettemp.postUpdate(aduroh2_Xsettemp.state)				// Store existing settemp of oven (degrees) so that it can be set back after InitWoodBurn is done/finished
+	
+	if (aduroh2_opdata_smoke_temp.state < 100) {
+		if (aduroh2_opdata_boiler_temp.state > aduroh2_Xsetboiler_temp_Lowerlimit.state) {
+			aduroh2_Xsettemp.sendCommand(aduroh2_opdata_boiler_temp.state + 5)	// Set settemp so high that the oven will start burning
+		}
+		if (aduroh2_Xonoff_switch.state == OFF) {
+			aduroh2_Xonoff_switch.sendCommand(ON)		// This should turn pellet oven on
+		}
+	} else {
+		logInfo("ADURO", "InitWoodBurn cannot initiate as smoke temp is too high")
+		AduroH2_InitWoodBurn.postUpdate(OFF)			// This should reset the InitWoodBurn (to OFF) and NOT trigger the OFF rule
+	}
+	
+
 end
 
-rule "process ON/OFF status"
+rule "InitWoodBurn check if enough"
 when
-	Item AduroH2_OnOFF changed from ON to OFF
+	Item aduroh2_opdata_state changed or
+	Item aduroh2_opdata_smoke_temp changed
 then
-	logInfo("ADURO", "Send runstatus = OFF")
+	if (aduroh2_opdata_state.state == 5 && aduroh2_opdata_smoke_temp.state > 120 && AduroH2_InitWoodBurn.state == ON) {
+		AduroH2_InitWoodBurn.sendCommand(OFF)		// This will turn InitWoodBurn off when the smoke temp is higher than 120 and the pellet oven is burning normally (state = 5)
+													// as it is then assumed that the oven has been burning for a little while and turned on the wood in the oven.
+													// If this is not enough to start the wood to burn, the 120 degrees needs to be set higher...
+		logInfo("ADURO", "InitWoodBurn completed")
+	}
+end
+
+rule "process Aduro InitWoodBurn OFF"
+when
+	Item AduroH2_InitWoodBurn changed from ON to OFF
+then
+	logInfo("ADURO", "InitWoodBurn turning off pellet burning")
+
 	AduroH2_set_runstatusOFF.sendCommand(ON)
+
+	InitWoodBurnTimer1 = createTimer(now.plusMinutes(1), [|
+	// Wait one minute to allow for sync of status
+		if (aduroh2_Xsettemp.state != aduroh2_InitWoodBurn_Stored_Xsettemp.state){
+			aduroh2_Xsettemp.sendCommand(aduroh2_InitWoodBurn_Stored_Xsettemp.state)
+		}
+		InitWoodBurnTimer2 = createTimer(now.plusMinutes(1), [|
+		// Wait one minute to allow for sync of status
+			if (aduroh2_Xonoff_switch.state != aduroh2_InitWoodBurn_Stored_Xonoff_switch.state) {
+				aduroh2_Xonoff_switch.sendCommand(aduroh2_InitWoodBurn_Stored_Xonoff_switch.state)	
+			}
+		])
+	])
+	
+
 end
+
 
 rule "Aduro RunstatusOFF check execution"
 when
 	Item AduroH2_runstatusOFF_string received update
 then
 	if (AduroH2_runstatusOFF_string.state != "OK") {
-		logInfo("ADURO", "Runstatus=OFF was not accepted by H2. Retrying")
-		AduroH2_set_runstatusOFF.sendCommand(ON)
+		if (aduroh2_execcommand_errors.state < 3) {
+			logInfo("ADURO", "Runstatus=OFF was not accepted by H2. Retrying")
+			aduroh2_execcommand_errors.postUpdate(aduroh2_execcommand_errors.state as DecimalType + 1)
+			AduroH2_set_runstatusOFF.sendCommand(ON) 
+		} else {
+			AduroH2_runstatusOFF_stringTimer = createTimer(now.plusMinutes(3), [|
+						logInfo("ADURO", "After 3 try trying again after 3 min and resetting error counter")
+						aduroh2_execcommand_errors.postUpdate(0)
+						AduroH2_set_runstatusOFF.sendCommand(ON)		
+			])
+		}
+	} else {
+		aduroh2_execcommand_errors.postUpdate(0)
 	}
 end
 
@@ -38,61 +95,57 @@ when
 	Item AduroH2_runstatusON_string received update
 then
 	if (AduroH2_runstatusON_string.state != "OK") {
-		logInfo("ADURO", "Runstatus=ON was not accepted by H2. Retrying")
-		AduroH2_set_runstatusON.sendCommand(ON)
+		if (aduroh2_execcommand_errors.state < 3) {
+			logInfo("ADURO", "Runstatus=ON was not accepted by H2. Retrying")
+			aduroh2_execcommand_errors.postUpdate(aduroh2_execcommand_errors.state as DecimalType + 1)
+			AduroH2_set_runstatusON.sendCommand(ON) 
+		} else {
+			AduroH2_runstatusON_stringTimer = createTimer(now.plusMinutes(3), [|
+						logInfo("ADURO", "After 3 try trying again after 3 min and resetting error counter")
+						aduroh2_execcommand_errors.postUpdate(0)
+						AduroH2_set_runstatusON.sendCommand(ON)		
+			])
+		}
+	} else {
+		aduroh2_execcommand_errors.postUpdate(0)
 	}
 end
 
-rule "Handle status changes Aduro"
+rule "Handle status change OFF Aduro"
 when
-	Item aduroh2_Xsetstate received update
+	Item aduroh2_Xonoff_switch received command OFF
 then
-
-	switch (aduroh2_Xsetstate.state) {
-		case 0: {
-			// OFF
-			if (AduroH2_Switch.state == ON) {
-				AduroH2_set_runstatusOFF.sendCommand(ON)
-				logInfo("ADURO", "Status changed to OFF")
-			}
-		}
-		case 1: {
-			// Hold Settemp
-			if (AduroH2_Switch.state == OFF) {
-				AduroH2_set_runstatusON.sendCommand(ON)
-				logInfo("ADURO", "Status changed to Hold Settemp Temp")
-			}
-		}
-		case 2: {
-			// Heat Level 1
-			logInfo("ADURO", "Status changed to Heat Level 1")
-		}
-		case 3: {
-			// Heat Level 2
-			logInfo("ADURO", "Status changed to Heat Level 2")
-		}
-		case 4: {
-			// Heat Level 3
-			logInfo("ADURO", "Status changed to Heat Level 3")
-		}
+	if (AduroH2_Switch.state == ON) {
+		AduroH2_set_runstatusOFF.sendCommand(ON)
+		logInfo("ADURO", "Status ændret til OFF")
 	}
+end
 
+rule "Handle status change ON Aduro"
+when
+	Item aduroh2_Xonoff_switch received command ON
+then
+// Hold Settemp
+	if (AduroH2_Switch.state == OFF) {
+		AduroH2_set_runstatusON.sendCommand(ON)
+		logInfo("ADURO", "Status ændret til Hold Settemp Temperaturen")
+	}
 end
 
 rule "Aduro Dont heat at night unless very cold"
 	when
 		Time cron "0 0 4 1/1 * ? *"   // Check day at 04:00
 	then
-		if (AduroH2_OnOFF.state == ON && aduroh2_Xsettemp.state as DecimalType > 16) {
+		if (AduroH2_NightPause.state == ON && aduroh2_Xonoff_switch.state == ON && aduroh2_Xsettemp.state as DecimalType > 17) {
 			val storeXsettemp = aduroh2_Xsettemp.state as DecimalType
-			aduroh2_Xsettemp.sendCommand(16)
+			aduroh2_Xsettemp.sendCommand(17)
 			if (TraceSwitch.state == ON) {
-				logInfo("ADURO", "Settemp changed to 16 degrees at 04:00 AM")
+				sendTelegram("bot1", "ADURO: Er gået på 17 grader kl. 04.00. Settemp stod på %s grader", storeXsettemp)
 			}
 			AduroNightTimer = createTimer(now.plusHours(3), [|
 				aduroh2_Xsettemp.sendCommand(storeXsettemp)
 				if (TraceSwitch.state == ON) {
-					logInfo("ADURO", "Settemp changed back at 07:00 AM")
+					sendTelegram("bot1", "ADURO: Er gået tilbage på %s grader efter 3 timer", storeXsettemp)
 				}
 			])
 		}
@@ -115,7 +168,7 @@ rule "Aduro Handle Restart at alarm"
 					Restart2Timer = createTimer(now.plusMinutes(1), [|
 						logInfo("ADURO", "Autoresolving/restart; turning ON again")
 						AduroH2_set_runstatusON.sendCommand(ON)		
-						logInfo("ADURO", "ADURO: Autorestart 10 min alarm has been tried")
+						sendTelegram("bot1", "ADURO: Autorestart 10 min efter alarm er forsøgt")
 					])
 				])
 			}
@@ -129,195 +182,8 @@ rule "Get aduroh2_opdata_Output_str"
 		aduroh2_opdata_Run_switch.sendCommand ( ON )
 		setboilerTimer = createTimer(now.plusSeconds(18), [|
 			aduroh2_setboiler_Run_switch.sendCommand ( ON )
-			eventlogTimer = createTimer(now.plusSeconds(18), [|
-				aduroh2_eventlog_Run_switch.sendCommand ( ON )
-			])
 		])
 	end
-
-
-rule "Convert aduroh2_eventlog_Output_str String to Items TEST"
-when
-	Item aduroh2_eventlog_Output_str changed
-then
-//	logInfo("ADURO", "Eventlog check")
-	if (aduroh2_eventlog_Output_str.state.toString.substring(0, 9) != "Traceback") {
-
-		postUpdate(aduroh2_eventlog_lastupdate, new DateTimeType()) 
-		
-		var String xEventStoredEventlog_lastmessages1 = aduroh2_eventlog_lastmessages1.state.toString
-
-		var String[] xEventlogLineBuffer = aduroh2_eventlog_Output_str.state.toString.split("\n")
-
-//		logInfo("ADURO", "Eventlog: " + aduroh2_eventlog_Output_str.state)
-//		logInfo("ADURO", "Lines in eventlog: " + xEventlogLineBuffer.size)
-
-		var i = 0
-		while ((i=i+1) < (xEventlogLineBuffer.size )) {
-
-			var String xEventlogLine = xEventlogLineBuffer.get(i-1)	
-
-			var String xEventlogLineEvent
-
-			var String xEventlogLineTS = 		 xEventlogLine.substring(4,6) +
-												 "/" +
-												 xEventlogLine.substring(2,4) +
-												 " " +
-												 xEventlogLine.substring(7,9) +
-												 ":" +
-												 xEventlogLine.substring(9,11) +
-												 ":" +
-												 xEventlogLine.substring(11,13)
-												 
-
-
-			var String[] xEventlogLineBufferPart = xEventlogLine.substring(14).split(",")
-
-			var String xEventlogLineCodePart1 = xEventlogLineBufferPart.get(0)
-			var String xEventlogLineCodePart2 = xEventlogLineBufferPart.get(1)
-			var String xEventlogLineCodePart3 = xEventlogLineBufferPart.get(2)
-			var String xEventlogLineCodePart4 = xEventlogLineBufferPart.get(3)
-			var String xEventlogLineCodePart5 = xEventlogLineBufferPart.get(4)
-
-			if (xEventlogLineCodePart1 == "0") {
-
-				switch (xEventlogLineCodePart2) {
-					case "14": {
-						xEventlogLineEvent = "Wanted temperature " + xEventlogLineCodePart3 + xEventlogLineCodePart5 + " -> " + xEventlogLineCodePart4 + xEventlogLineCodePart5
-						}
-
-					case "32": {
-						// Optimisation: remove decimals in part 3 and 4 (i.e. change 25.0 to 25)
-						xEventlogLineEvent = "Auger runtime step 1 " + xEventlogLineCodePart3 + " sec" + " -> " + xEventlogLineCodePart4 + "sec"
-						}
-
-					case "92": {
-						xEventlogLineEvent = "Normal cleaning duration " + xEventlogLineCodePart3 + " sec" + " -> " + xEventlogLineCodePart4 + "sec"
-						}
-
-					case "93": {
-						xEventlogLineEvent = "Cleaning duration " + xEventlogLineCodePart3 + "-" +xEventlogLineCodePart4
-						}
-
-					case "97": {
-						xEventlogLineEvent = "Smoke temperature high limit " + xEventlogLineCodePart3 + "C" + " -> " + xEventlogLineCodePart4 + "C"
-						}
-
-					case "98": {
-						xEventlogLineEvent = "Smoke temperature middle limit " + xEventlogLineCodePart3 + "C" + " -> " + xEventlogLineCodePart4 + "C"
-						}
-
-					case "115": {
-						// Optimisation: remove decimals in part 3 and 4 (i.e. change 25.0 to 25)
-						xEventlogLineEvent = "Auger runtime " + xEventlogLineCodePart3 + xEventlogLineCodePart5 + " -> " + xEventlogLineCodePart4 + xEventlogLineCodePart5
-						}
-
-					case "168": {
-						xEventlogLineEvent = "Heat level " + xEventlogLineCodePart3 + xEventlogLineCodePart5 + " -> " + xEventlogLineCodePart4 + xEventlogLineCodePart5
-						}
-			
-					case "294": {
-						xEventlogLineEvent = "Smoke temperature low limit " + xEventlogLineCodePart3 + "C" + " -> " + xEventlogLineCodePart4 + "C"
-						}
-
-					case "317": {
-						xEventlogLineEvent = "(seen, but unknown event) from " + xEventlogLineCodePart3 + " -> " + xEventlogLineCodePart4 + " " + xEventlogLineCodePart5
-						}
-
-					case "356": {
-						xEventlogLineEvent = "Operation mode " + xEventlogLineCodePart3 + " -> " + xEventlogLineCodePart4
-						}
-
-					default: {
-						xEventlogLineEvent = "(unknown event) from " + xEventlogLineCodePart3 + " -> " + xEventlogLineCodePart4 + " " + xEventlogLineCodePart5
-						}
-				}
-
-			} else {
-
-				if (xEventlogLineCodePart1 == "1" && xEventlogLineCodePart2 == "0") {
-					var String xEventlogLineCodeTextBuild
-					switch xEventlogLineCodePart3 {
-						case "0":  { xEventlogLineCodeTextBuild = "Wait" }
-						case "2":  { xEventlogLineCodeTextBuild = "Ignition" }
-						case "4":  { xEventlogLineCodeTextBuild = "Ignition 2" }
-						case "5":  { xEventlogLineCodeTextBuild = "Normal power" }
-						case "6":  { xEventlogLineCodeTextBuild = "Room temperature reached" }
-						case "9":  { xEventlogLineCodeTextBuild = "Wood burning" }
-						case "13": { xEventlogLineCodeTextBuild = "Ignition failed" }
-						case "14": { xEventlogLineCodeTextBuild = "Stopped by button" }
-						case "20": { xEventlogLineCodeTextBuild = "No fire" }
-						case "28": { xEventlogLineCodeTextBuild = "Door open" }
-						default:   { xEventlogLineCodeTextBuild = "(unknown from status)" }
-					}
-
-					xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + " -> "
-
-					switch xEventlogLineCodePart4 {
-						case "0":  { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "Wait" }
-						case "2":  { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "Ignition" }
-						case "4":  { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "Ignition 2" }
-						case "5":  { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "Normal power" }
-						case "6":  { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "Room temperature reached" }
-						case "9":  { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "Wood burning" }
-						case "13": { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "Ignition failed" }
-						case "14": { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "Stopped by button" }
-						case "20": { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "No fire" }
-						case "28": { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "Door open" }
-						default:   { xEventlogLineCodeTextBuild = xEventlogLineCodeTextBuild + "(unknown from status)" }
-					}
-					xEventlogLineEvent = xEventlogLineCodeTextBuild
-
-				} else {
-
-					xEventlogLineEvent = "(unknown event : " + xEventlogLine.substring(14) +")"
-
-				}
-
-			}
-
-			var String xEventlogLineFormal = (xEventlogLineTS + "   " + xEventlogLineEvent)
-
-			switch i {
-				case 1: {
-					if (xEventlogLineFormal == xEventStoredEventlog_lastmessages1) {
-						logInfo("ADURO", "No new log messages since last update")
-					} else {
-						aduroh2_eventlog_lastmessages1.postUpdate(xEventlogLineFormal)
-					}
-				}
-				case 2: {
-					if (xEventlogLineFormal == xEventStoredEventlog_lastmessages1) {
-						// 1 new message has turned up
-						logInfo("ADURO", "1 new log messages since last update")
-					}
-					aduroh2_eventlog_lastmessages2.postUpdate(xEventlogLineFormal) 
-				}
-				case 3: {
-					if (xEventlogLineFormal == xEventStoredEventlog_lastmessages1) {
-						// 2 new messages has turned up
-						logInfo("ADURO", "2 new log messages since last update")
-					}
-					aduroh2_eventlog_lastmessages3.postUpdate(xEventlogLineFormal) 
-				}
-				case 4: {
-					if (xEventlogLineFormal == xEventStoredEventlog_lastmessages1) {
-						// 3 new messages has turned up
-						logInfo("ADURO", "3 new log messages since last update")
-					}
-				}
-				default: {
-					if (xEventlogLineFormal == xEventStoredEventlog_lastmessages1) {
-						// more than 3 new messages has turned up
-						logInfo("ADURO", "More than 3 new log messages since last update")
-					}
-				}
-			}
-		}
-	} else {
-		logInfo("ADURO", "Get eventlog gave TRACEBACK")
-	}
-end
 
 rule "Sync Aduro On/OFF"
 when
@@ -325,12 +191,14 @@ when
 then
 	switch aduroh2_opdata_off_on_alarm.state.toString {
 		case "0": {
-			AduroH2_Switch.sendCommand(OFF)
-			if (AduroH2_Alarm.state == ON) {
-				AduroH2_Alarm.sendCommand(OFF)
-			}
-			if (aduroh2_Xsetstate.state != 0) {
-				aduroh2_Xsetstate.postUpdate(0)
+			if (aduroh2_opdata_state.state.toString != "9") {         // Ignore changes if state is "Wood Burning"
+				AduroH2_Switch.sendCommand(OFF)
+				if (AduroH2_Alarm.state == ON) {
+					AduroH2_Alarm.sendCommand(OFF)
+				}
+				if (aduroh2_Xonoff_switch.state == ON) {
+					aduroh2_Xonoff_switch.postUpdate(OFF)
+				}
 			}
 		}
 		case "1": {
@@ -338,10 +206,11 @@ then
 			if (AduroH2_Alarm.state == ON) {
 				AduroH2_Alarm.sendCommand(OFF)
 			}
-			if (aduroh2_Xsetstate.state != 1) {
-				aduroh2_Xsetstate.postUpdate(1)
+			if (aduroh2_Xonoff_switch.state == OFF) {
+				aduroh2_Xonoff_switch.postUpdate(ON)
 			}
 		}
+
 		case "2": {
 			AduroH2_Switch.sendCommand(OFF)
 			AduroH2_Alarm.sendCommand(ON)
@@ -372,19 +241,18 @@ then
 	
 	val xOpdata_State = aduroh2_opdata_state.state as DecimalType
 	val xOpdata_Substate = aduroh2_opdata_substate.state as DecimalType
+
 	switch xOpdata_State {
 		case 0:  { xState = "Wait" }
 		case 2:  { xState = "Ignition" }
 		case 4:  { xState = "Ignition 2" }
 		case 5:  { xState = "Normal power" }
-		case 6:  { xState = "Room temperature reached" 
-//					logInfo("ADURO", "ADURO: Heating ended. Room temp hold on settemp.")
-				}
+		case 6:  { xState = "Room temperature reached" }
 		case 9:  { xState = "Wood burning" }
 		case 13:  { xState = "Ignition Failed" }
 		case 14: { xState = "Stopped by button" 
-					if (aduroh2_Xsetstate.state != 0) {
-						aduroh2_Xsetstate.postUpdate(0)
+					if (aduroh2_Xonoff_switch.state == ON) {
+						aduroh2_Xonoff_switch.postUpdate(OFF)
 					}
 				}
 		case 20:  { xState = "No Fire" }
@@ -412,68 +280,16 @@ when
 then
 	
 	if (aduroh2_opdata_Output_str.state.toString.substring(0, 9) != "Traceback") {
-		var String Zopdata_state = aduroh2_opdata_state.state.toString
-		var String Zopdata_substate = aduroh2_opdata_substate.state.toString
-		var String Zopdata_off_on_alarm = aduroh2_opdata_off_on_alarm.state.toString
-		var String Zopdata_house_valve_state = aduroh2_opdata_house_valve_state.state.toString
-
-		postUpdate(aduroh2_opdata_lastupdate, new DateTimeType()) 
-
-		var String aduroh2_opdata_time_newValue = aduroh2_opdata_Output_str.state.toString.substringBetween("operating_data/time=","\n") 
-		if (aduroh2_opdata_time_newValue != aduroh2_opdata_time.state) {
-			aduroh2_opdata_time.postUpdate( aduroh2_opdata_time_newValue )
-		}
 
 	//  Rumtemperatur
 		val aduroh2_opdata_boiler_temp_newValue = transform("REGEX", ".*operating_data/boiler_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
 		if (aduroh2_opdata_boiler_temp_newValue != aduroh2_opdata_boiler_temp.state) {
 			aduroh2_opdata_boiler_temp.postUpdate( aduroh2_opdata_boiler_temp_newValue )
-		}
+		}AduroH2_Switch
 	//  Røgtemperatur
 		val aduroh2_opdata_smoke_temp_newValue = transform("REGEX", ".*operating_data/smoke_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
 		if (aduroh2_opdata_smoke_temp_newValue != aduroh2_opdata_smoke_temp.state) {
 			aduroh2_opdata_smoke_temp.postUpdate( aduroh2_opdata_smoke_temp_newValue )
-		}
-
-		val aduroh2_opdata_return_temp_newValue = transform("REGEX", ".*operating_data/return_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_return_temp_newValue != aduroh2_opdata_return_temp.state) {
-			aduroh2_opdata_return_temp.postUpdate( aduroh2_opdata_return_temp_newValue )
-		}
-
-		val aduroh2_opdata_dhw_temp_newValue = transform("REGEX", ".*operating_data/dhw_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_dhw_temp_newValue != aduroh2_opdata_dhw_temp.state) {
-			aduroh2_opdata_dhw_temp.postUpdate( aduroh2_opdata_dhw_temp_newValue )
-		}
-
-		val aduroh2_opdata_external_temp_newValue = transform("REGEX", ".*operating_data/external_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_external_temp_newValue != aduroh2_opdata_external_temp.state) {
-			aduroh2_opdata_external_temp.postUpdate( aduroh2_opdata_external_temp_newValue )
-		}
-
-		val aduroh2_opdata_t6_temp_newValue = transform("REGEX", ".*operating_data/t6_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_t6_temp_newValue != aduroh2_opdata_t6_temp.state) {
-			aduroh2_opdata_t6_temp.postUpdate( aduroh2_opdata_t6_temp_newValue )
-		}
-
-		val aduroh2_opdata_t7_temp_newValue = transform("REGEX", ".*operating_data/t7_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_t7_temp_newValue != aduroh2_opdata_t7_temp.state) {
-			aduroh2_opdata_t7_temp.postUpdate( aduroh2_opdata_t7_temp_newValue )
-		}
-
-		val aduroh2_opdata_distance_newValue = transform("REGEX", ".*operating_data/distance=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_distance_newValue != aduroh2_opdata_distance.state) {
-			aduroh2_opdata_distance.postUpdate( aduroh2_opdata_distance_newValue )
-		}
-
-		val aduroh2_opdata_photo_level_newValue = transform("REGEX", ".*operating_data/photo_level=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_photo_level_newValue != aduroh2_opdata_photo_level.state) {
-			aduroh2_opdata_photo_level.postUpdate( aduroh2_opdata_photo_level_newValue )
-		}
-
-	//  Dropshaft temperature
-		val aduroh2_opdata_shaft_temp_newValue = transform("REGEX", ".*operating_data/shaft_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_shaft_temp_newValue != aduroh2_opdata_shaft_temp.state) {
-			aduroh2_opdata_shaft_temp.postUpdate( aduroh2_opdata_shaft_temp_newValue )
 		}
 
 		val aduroh2_opdata_milli_ampere_newValue = transform("REGEX", ".*operating_data/milli_ampere=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
@@ -481,163 +297,18 @@ then
 			aduroh2_opdata_milli_ampere.postUpdate( aduroh2_opdata_milli_ampere_newValue )
 		}
 
-		val aduroh2_opdata_oxygen_newValue = transform("REGEX", ".*operating_data/oxygen=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_oxygen_newValue != aduroh2_opdata_oxygen.state) {
-			aduroh2_opdata_oxygen.postUpdate( aduroh2_opdata_oxygen_newValue )
-		}
-		
-		val aduroh2_opdata_flow1_newValue = transform("REGEX", ".*operating_data/flow1=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_flow1_newValue != aduroh2_opdata_flow1.state) {
-			aduroh2_opdata_flow1.postUpdate( aduroh2_opdata_flow1_newValue )
-		}
-		
-		val aduroh2_opdata_flow2_newValue = transform("REGEX", ".*operating_data/flow2=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_flow2_newValue != aduroh2_opdata_flow2.state) {
-			aduroh2_opdata_flow2.postUpdate( aduroh2_opdata_flow2_newValue )
-		}
-		
-		val aduroh2_opdata_flow3_newValue = transform("REGEX", ".*operating_data/flow3=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_flow3_newValue != aduroh2_opdata_flow3.state) {
-			aduroh2_opdata_flow3.postUpdate( aduroh2_opdata_flow3_newValue )
-		}
-		
-		val aduroh2_opdata_flow4_newValue = transform("REGEX", ".*operating_data/flow4=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_flow4_newValue != aduroh2_opdata_flow4.state) {
-			aduroh2_opdata_flow4.postUpdate( aduroh2_opdata_flow4_newValue )
-		}
-		
 		val aduroh2_opdata_power_pct_newValue = transform("REGEX", ".*operating_data/power_pct=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
 		if (aduroh2_opdata_power_pct_newValue != aduroh2_opdata_power_pct.state) {
 			aduroh2_opdata_power_pct.postUpdate( aduroh2_opdata_power_pct_newValue )
 		}
-		
-		val aduroh2_opdata_power_kw_newValue = transform("REGEX", ".*operating_data/power_kw=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_power_kw_newValue != aduroh2_opdata_power_kw.state) {
-			aduroh2_opdata_power_kw.postUpdate( aduroh2_opdata_power_kw_newValue )
-		}
-		
-		val aduroh2_opdata_oxygen_ref_newValue = transform("REGEX", ".*operating_data/oxygen_ref=(\\-?\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_oxygen_ref_newValue != aduroh2_opdata_oxygen_ref.state) {
-			aduroh2_opdata_oxygen_ref.postUpdate( aduroh2_opdata_oxygen_ref_newValue )
-		}
 
-	//  Requested room temp
+	//  Ønsket rumtemperatur
 		val aduroh2_opdata_boiler_ref_newValue = transform("REGEX", ".*operating_data/boiler_ref=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
 		if (aduroh2_opdata_boiler_ref_newValue != aduroh2_opdata_boiler_ref.state) {
 			aduroh2_opdata_boiler_ref.postUpdate( aduroh2_opdata_boiler_ref_newValue )
 		}
 
-		val aduroh2_opdata_mean_out_temp_newValue = transform("REGEX", ".*operating_data/mean_out_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_mean_out_temp_newValue != aduroh2_opdata_mean_out_temp.state) {
-			aduroh2_opdata_mean_out_temp.postUpdate( aduroh2_opdata_mean_out_temp_newValue )
-		}
-
-		val aduroh2_opdata_dhw_ref_newValue = transform("REGEX", ".*operating_data/dhw_ref=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_dhw_ref_newValue != aduroh2_opdata_dhw_ref.state) {
-			aduroh2_opdata_dhw_ref.postUpdate( aduroh2_opdata_dhw_ref_newValue )
-		}
-
-		val aduroh2_opdata_forward_ref_newValue = transform("REGEX", ".*operating_data/forward_ref=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_forward_ref_newValue != aduroh2_opdata_forward_ref.state) {
-			aduroh2_opdata_forward_ref.postUpdate( aduroh2_opdata_forward_ref_newValue )
-		}
-
-		val aduroh2_opdata_sun2_temp_newValue = transform("REGEX", ".*operating_data/sun2_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_sun2_temp_newValue != aduroh2_opdata_sun2_temp.state) {
-			aduroh2_opdata_sun2_temp.postUpdate( aduroh2_opdata_sun2_temp_newValue )
-		}
-
-		val aduroh2_opdata_sun_dhw_temp_newValue = transform("REGEX", ".*operating_data/sun_dhw_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_sun_dhw_temp_newValue != aduroh2_opdata_sun_dhw_temp.state) {
-			aduroh2_opdata_sun_dhw_temp.postUpdate( aduroh2_opdata_sun_dhw_temp_newValue )
-		}
-
-		val aduroh2_opdata_sun_surplus_temp_newValue = transform("REGEX", ".*operating_data/sun_surplus_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_sun_surplus_temp_newValue != aduroh2_opdata_sun_surplus_temp.state) {
-			aduroh2_opdata_sun_surplus_temp.postUpdate( aduroh2_opdata_sun_surplus_temp_newValue )
-		}
-
-		val aduroh2_opdata_pressure_newValue = transform("REGEX", ".*operating_data/pressure=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_pressure_newValue != aduroh2_opdata_pressure.state) {
-			aduroh2_opdata_pressure.postUpdate( aduroh2_opdata_pressure_newValue )
-		}
-
-		val aduroh2_opdata_air_flow_newValue = transform("REGEX", ".*operating_data/air_flow=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_air_flow_newValue != aduroh2_opdata_air_flow.state) {
-			aduroh2_opdata_air_flow.postUpdate( aduroh2_opdata_air_flow_newValue )
-		}
-
-		val aduroh2_opdata_sun_temp_newValue = transform("REGEX", ".*operating_data/sun_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_sun_temp_newValue != aduroh2_opdata_sun_temp.state) {
-			aduroh2_opdata_sun_temp.postUpdate( aduroh2_opdata_sun_temp_newValue )
-		}
-
-		val aduroh2_opdata_house_valve_state_newValue = transform("REGEX", ".*operating_data/house_valve_state=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_house_valve_state_newValue != aduroh2_opdata_house_valve_state.state) {
-			aduroh2_opdata_house_valve_state.postUpdate( aduroh2_opdata_house_valve_state_newValue )
-		}
-
-		val aduroh2_opdata_chill_out_newValue = transform("REGEX", ".*operating_data/chill_out=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_chill_out_newValue != aduroh2_opdata_chill_out.state) {
-			aduroh2_opdata_chill_out.postUpdate( aduroh2_opdata_chill_out_newValue )
-		}
-
-		val aduroh2_opdata_sun_pumpspeed_newValue = transform("REGEX", ".*operating_data/sun_pumpspeed=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_sun_pumpspeed_newValue != aduroh2_opdata_sun_pumpspeed.state) {
-			aduroh2_opdata_sun_pumpspeed.postUpdate( aduroh2_opdata_sun_pumpspeed_newValue )
-		}
-
-		val aduroh2_opdata_sun_power_kw_newValue = transform("REGEX", ".*operating_data/sun_power_kw=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_sun_power_kw_newValue != aduroh2_opdata_sun_power_kw.state) {
-			aduroh2_opdata_sun_power_kw.postUpdate( aduroh2_opdata_sun_power_kw_newValue )
-		}
-
-		val aduroh2_opdata_cloud_level_newValue = transform("REGEX", ".*operating_data/cloud_level=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_cloud_level_newValue != aduroh2_opdata_cloud_level.state) {
-			aduroh2_opdata_cloud_level.postUpdate( aduroh2_opdata_cloud_level_newValue )
-		}
-
-		val aduroh2_opdata_forward_temp_newValue = transform("REGEX", ".*operating_data/forward_temp=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_forward_temp_newValue != aduroh2_opdata_forward_temp.state) {
-			aduroh2_opdata_forward_temp.postUpdate( aduroh2_opdata_forward_temp_newValue )
-		}
-
-		val aduroh2_opdata_back_pressure_newValue = transform("REGEX", ".*operating_data/back_pressure=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_back_pressure_newValue != aduroh2_opdata_back_pressure.state) {
-			aduroh2_opdata_back_pressure.postUpdate( aduroh2_opdata_back_pressure_newValue )
-		}
-
-		val aduroh2_opdata_t1_temp_newValue = transform("REGEX", ".*operating_data/t1_temp=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_t1_temp_newValue != aduroh2_opdata_t1_temp.state) {
-			aduroh2_opdata_t1_temp.postUpdate( aduroh2_opdata_t1_temp_newValue )
-		}
-
-		val aduroh2_opdata_air_quality_newValue = transform("REGEX", ".*operating_data/air_quality=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_air_quality_newValue != aduroh2_opdata_air_quality.state) {
-			aduroh2_opdata_air_quality.postUpdate( aduroh2_opdata_air_quality_newValue )
-		}
-
-		val aduroh2_opdata_feed_low_newValue = transform("REGEX", ".*operating_data/feed_low=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_feed_low_newValue != aduroh2_opdata_feed_low.state) {
-			aduroh2_opdata_feed_low.postUpdate( aduroh2_opdata_feed_low_newValue )
-		}
-
-		val aduroh2_opdata_feed_medium_newValue = transform("REGEX", ".*operating_data/feed_medium=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_feed_medium_newValue != aduroh2_opdata_feed_medium.state) {
-			aduroh2_opdata_feed_medium.postUpdate( aduroh2_opdata_feed_medium_newValue )
-		}
-
-		val aduroh2_opdata_feed_high_newValue = transform("REGEX", ".*operating_data/feed_high=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_feed_high_newValue != aduroh2_opdata_feed_high.state) {
-			aduroh2_opdata_feed_high.postUpdate( aduroh2_opdata_feed_high_newValue )
-		}
-
-		val aduroh2_opdata_content_newValue = transform("REGEX", ".*operating_data/content=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_content_newValue != aduroh2_opdata_content.state) {
-			aduroh2_opdata_content.postUpdate( aduroh2_opdata_content_newValue )
-		}
-
-	//  6=ON but Room temperature reached, 14=OFF, 20=ON, warming?
+	//  6=ON but Room temperature reached, 14=OFF/Slukket på knap, 20=ON, warming?
 		val aduroh2_opdata_state_newValue = transform("REGEX", ".*operating_data/state=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
 		if (aduroh2_opdata_state_newValue != aduroh2_opdata_state.state) {
 			aduroh2_opdata_state.postUpdate( aduroh2_opdata_state_newValue )
@@ -649,81 +320,11 @@ then
 			aduroh2_opdata_substate.postUpdate( aduroh2_opdata_substate_newValue )
 		}
 
-		val aduroh2_opdata_boiler_pump_state_newValue = transform("REGEX", ".*operating_data/boiler_pump_state=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_boiler_pump_state_newValue != aduroh2_opdata_boiler_pump_state.state) {
-			aduroh2_opdata_boiler_pump_state.postUpdate( aduroh2_opdata_boiler_pump_state_newValue )
-		}
 
-		val aduroh2_opdata_dhw_valve_state_newValue = transform("REGEX", ".*operating_data/dhw_valve_state=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_dhw_valve_state_newValue != aduroh2_opdata_dhw_valve_state.state) {
-			aduroh2_opdata_dhw_valve_state.postUpdate( aduroh2_opdata_dhw_valve_state_newValue )
-		}
-
-		val aduroh2_opdata_house_pump_state_newValue = transform("REGEX", ".*operating_data/house_pump_state=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_house_pump_state_newValue != aduroh2_opdata_house_pump_state.state) {
-			aduroh2_opdata_house_pump_state.postUpdate( aduroh2_opdata_house_pump_state_newValue )
-		}
-
-		val aduroh2_opdata_sun_pump_state_newValue = transform("REGEX", ".*operating_data/sun_pump_state=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_sun_pump_state_newValue != aduroh2_opdata_sun_pump_state.state) {
-			aduroh2_opdata_sun_pump_state.postUpdate( aduroh2_opdata_sun_pump_state_newValue )
-		}
-
-		val aduroh2_opdata_sun_surplus_state_newValue = transform("REGEX", ".*operating_data/sun_surplus_state=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_sun_surplus_state_newValue != aduroh2_opdata_sun_surplus_state.state) {
-			aduroh2_opdata_sun_surplus_state.postUpdate( aduroh2_opdata_sun_surplus_state_newValue )
-		}
-
-		val aduroh2_opdata_ashbox_minutes_newValue = transform("REGEX", ".*operating_data/ashbox_minutes=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_ashbox_minutes_newValue != aduroh2_opdata_ashbox_minutes.state) {
-			aduroh2_opdata_ashbox_minutes.postUpdate( aduroh2_opdata_ashbox_minutes_newValue )
-		}
-
-		val aduroh2_opdata_ashbox_contact_newValue = transform("REGEX", ".*operating_data/ashbox_contact=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_ashbox_contact_newValue != aduroh2_opdata_ashbox_contact.state) {
-			aduroh2_opdata_ashbox_contact.postUpdate( aduroh2_opdata_ashbox_contact_newValue )
-		}
-
-		val aduroh2_opdata_internet_uptime_newValue = transform("REGEX", ".*operating_data/internet_uptime=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_internet_uptime_newValue != aduroh2_opdata_internet_uptime.state) {
-			aduroh2_opdata_internet_uptime.postUpdate( aduroh2_opdata_internet_uptime_newValue )
-		}
-
-	//  0=OFF?, 1=ON but waiting, 2=ON and running??
+	//  0=OFF?, 1=ON but waiting, 2=OFF Alarm
 		val aduroh2_opdata_off_on_alarm_newValue = transform("REGEX", ".*operating_data/off_on_alarm=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
 		if (aduroh2_opdata_off_on_alarm_newValue != aduroh2_opdata_off_on_alarm.state) {
 			aduroh2_opdata_off_on_alarm.postUpdate( aduroh2_opdata_off_on_alarm_newValue )
-			if (aduroh2_opdata_off_on_alarm_newValue == "3") {
-				logInfo("ADURO", "ADURO ALARM! Pellet oven warming has stopped. Check status !")
-			}
-		}
-
-		val aduroh2_opdata_contact2_newValue = transform("REGEX", ".*operating_data/contact2=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_contact2_newValue != aduroh2_opdata_contact2.state) {
-			aduroh2_opdata_contact2.postUpdate( aduroh2_opdata_contact2_newValue )
-		}
-
-		val aduroh2_opdata_corr_medium_newValue = transform("REGEX", ".*operating_data/corr_medium=(\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_corr_medium_newValue != aduroh2_opdata_corr_medium.state) {
-			aduroh2_opdata_corr_medium.postUpdate( aduroh2_opdata_corr_medium_newValue )
-		}
-
-		val aduroh2_opdata_compressor_clean_newValue = transform("REGEX", ".*operating_data/compressor_clean=(\\d*.\\d*)\n.*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_compressor_clean_newValue != aduroh2_opdata_compressor_clean.state) {
-			aduroh2_opdata_compressor_clean.postUpdate( aduroh2_opdata_compressor_clean_newValue )
-		}
-
-		val aduroh2_opdata_fan_speed_newValue = transform("REGEX", ".*operating_data/fan_speed=(\\d*.\\d*).*", aduroh2_opdata_Output_str.state.toString)
-		if (aduroh2_opdata_fan_speed_newValue != aduroh2_opdata_fan_speed.state) {
-			aduroh2_opdata_fan_speed.postUpdate( aduroh2_opdata_fan_speed_newValue )
-		}
-
-		if (((Zopdata_state != aduroh2_opdata_state_newValue) ||
-			(Zopdata_substate != aduroh2_opdata_substate_newValue) ||
-			(Zopdata_off_on_alarm != aduroh2_opdata_off_on_alarm_newValue) ||
-			(Zopdata_house_valve_state != aduroh2_opdata_house_valve_state_newValue)) && 
-			TraceSwitch.state == ON) {
-			logInfo("ADURO", "ADUROTRACE: Updated values:\nopdata_state: %s\nopdata_substate: %s\nopdata_off_on_alarm: %s\nopdata_house_valve_state: %s", aduroh2_opdata_state_newValue, aduroh2_opdata_substate_newValue, aduroh2_opdata_off_on_alarm_newValue, aduroh2_opdata_house_valve_state_newValue)
 		}
 
 	} else {
@@ -738,8 +339,6 @@ when
 then
 
 	if (aduroh2_setboiler_Output_str.state.toString.substring(0, 9) != "Traceback") {
-
-		postUpdate(aduroh2_setboiler_lastupdate, new DateTimeType()) 
 
 		val aduroh2_setboiler_temp_newValue = transform("REGEX", ".*settings/boiler/temp=(\\d*)\n.*", aduroh2_setboiler_Output_str.state.toString)
 		if (aduroh2_setboiler_temp_newValue != aduroh2_setboiler_temp.state) {
@@ -756,80 +355,6 @@ then
 			aduroh2_setboiler_diff_under.postUpdate( aduroh2_setboiler_diff_under_newValue )
 		}
 
-		val aduroh2_setboiler_reduction_newValue = transform("REGEX", ".*settings/boiler/reduction=(\\d*)\n.*", aduroh2_setboiler_Output_str.state.toString)
-		if (aduroh2_setboiler_reduction_newValue != aduroh2_setboiler_reduction.state) {
-			aduroh2_setboiler_reduction.postUpdate( aduroh2_setboiler_reduction_newValue )
-		}
-
-		val aduroh2_setboiler_ext_stop_temp_newValue = transform("REGEX", ".*settings/boiler/ext_stop_temp=(\\d*.\\d*)\n.*", aduroh2_setboiler_Output_str.state.toString)
-		if (aduroh2_setboiler_ext_stop_temp_newValue != aduroh2_setboiler_ext_stop_temp.state) {
-			aduroh2_setboiler_ext_stop_temp.postUpdate( aduroh2_setboiler_ext_stop_temp_newValue )
-		}
-
-		val aduroh2_setboiler_ext_stop_diff_newValue = transform("REGEX", ".*settings/boiler/ext_stop_diff=(\\d*.\\d*)\n.*", aduroh2_setboiler_Output_str.state.toString)
-		if (aduroh2_setboiler_ext_stop_diff_newValue != aduroh2_setboiler_ext_stop_diff.state) {
-			aduroh2_setboiler_ext_stop_diff.postUpdate( aduroh2_setboiler_ext_stop_diff_newValue )
-		}
-
-		val aduroh2_setboiler_ext_switch_newValue = transform("REGEX", ".*settings/boiler/ext_switch=(\\d*)\n.*", aduroh2_setboiler_Output_str.state.toString)
-		if (aduroh2_setboiler_ext_switch_newValue != aduroh2_setboiler_ext_switch.state) {
-			aduroh2_setboiler_ext_switch.postUpdate( aduroh2_setboiler_ext_switch_newValue )
-		}
-		
-		val aduroh2_setboiler_ext_off_delay_newValue = transform("REGEX", ".*settings/boiler/ext_off_delay=(\\d*)\n.*", aduroh2_setboiler_Output_str.state.toString)
-		if (aduroh2_setboiler_ext_off_delay_newValue != aduroh2_setboiler_ext_off_delay.state) {
-			aduroh2_setboiler_ext_off_delay.postUpdate( aduroh2_setboiler_ext_off_delay_newValue )
-		}
-
-		val aduroh2_setboiler_ext_on_delay_newValue = transform("REGEX", ".*settings/boiler/ext_on_delay=(\\d*)\n.*", aduroh2_setboiler_Output_str.state.toString)
-		if (aduroh2_setboiler_ext_on_delay_newValue != aduroh2_setboiler_ext_on_delay.state) {
-			aduroh2_setboiler_ext_on_delay.postUpdate( aduroh2_setboiler_ext_on_delay_newValue )
-		}
-
-		val aduroh2_setboiler_timer_newValue = transform("REGEX", ".*settings/boiler/timer=(\\d*)\n.*", aduroh2_setboiler_Output_str.state.toString)
-		if (aduroh2_setboiler_timer_newValue != aduroh2_setboiler_timer.state) {
-			aduroh2_setboiler_timer.postUpdate( aduroh2_setboiler_timer_newValue )
-		}
-
-		var String aduroh2_setboiler_monday_newValue = aduroh2_setboiler_Output_str.state.toString.substringBetween("settings/boiler/monday=","\n") 
-		if (aduroh2_setboiler_monday_newValue != aduroh2_setboiler_monday.state) {
-			aduroh2_setboiler_monday.postUpdate( aduroh2_setboiler_monday_newValue )
-		}
-
-		var String aduroh2_setboiler_tuesday_newValue = aduroh2_setboiler_Output_str.state.toString.substringBetween("settings/boiler/tuesday=","\n") 
-		if (aduroh2_setboiler_tuesday_newValue != aduroh2_setboiler_tuesday.state) {
-			aduroh2_setboiler_tuesday.postUpdate( aduroh2_setboiler_tuesday_newValue )
-		}
-
-		var String aduroh2_setboiler_wednesday_newValue = aduroh2_setboiler_Output_str.state.toString.substringBetween("settings/boiler/wednesday=","\n") 
-		if (aduroh2_setboiler_wednesday_newValue != aduroh2_setboiler_wednesday.state) {
-			aduroh2_setboiler_wednesday.postUpdate( aduroh2_setboiler_wednesday_newValue )
-		}
-
-		var String aduroh2_setboiler_thursday_newValue = aduroh2_setboiler_Output_str.state.toString.substringBetween("settings/boiler/thursday=","\n") 
-		if (aduroh2_setboiler_thursday_newValue != aduroh2_setboiler_thursday.state) {
-			aduroh2_setboiler_thursday.postUpdate( aduroh2_setboiler_thursday_newValue )
-		}
-
-		var String aduroh2_setboiler_friday_newValue = aduroh2_setboiler_Output_str.state.toString.substringBetween("settings/boiler/friday=","\n") 
-		if (aduroh2_setboiler_friday_newValue != aduroh2_setboiler_friday.state) {
-			aduroh2_setboiler_friday.postUpdate( aduroh2_setboiler_friday_newValue )
-		}
-
-		var String aduroh2_setboiler_saturday_newValue = aduroh2_setboiler_Output_str.state.toString.substringBetween("settings/boiler/saturday=","\n") 
-		if (aduroh2_setboiler_saturday_newValue != aduroh2_setboiler_saturday.state) {
-			aduroh2_setboiler_saturday.postUpdate( aduroh2_setboiler_saturday_newValue )
-		}
-
-		var String aduroh2_setboiler_sunday_newValue = aduroh2_setboiler_Output_str.state.toString.substringBetween("settings/boiler/sunday=","\n") 
-		if (aduroh2_setboiler_sunday_newValue != aduroh2_setboiler_sunday.state) {
-			aduroh2_setboiler_sunday.postUpdate( aduroh2_setboiler_sunday_newValue )
-		}
-
-		val aduroh2_setboiler_min_return_newValue = transform("REGEX", ".*settings/boiler/min_return=(\\d*).*", aduroh2_setboiler_Output_str.state.toString)
-		if (aduroh2_setboiler_min_return_newValue != aduroh2_setboiler_min_return.state) {
-			aduroh2_setboiler_min_return.postUpdate( aduroh2_setboiler_min_return_newValue )
-		}
 	} else {
 		logInfo("ADURO", "Get settings/boiler gave TRACEBACK")
 	}
@@ -862,8 +387,6 @@ when
 then
    if (aduroh2_settemp_Run_switch.state != ON) {
 	aduroh2_settemp_Run_switch.sendCommand(ON)
-   } else {
-	logInfo("ADURO", "settemp Script already in use, skipping execution.")
    }
 end
 
@@ -872,7 +395,18 @@ when
 	Item aduroh2_settemp_Output_str received update
 then
 	if (aduroh2_settemp_Output_str.state != "OK") {
-		logInfo("ADURO", "Settemp update was not accepted by H2. Retrying")
-		aduroh2_settemp_Run_switch.sendCommand(ON)
+		if (aduroh2_execcommand_errors.state < 3) {
+			logInfo("ADURO", "Settemp update was not accepted by H2. Retrying")
+			aduroh2_execcommand_errors.postUpdate(aduroh2_execcommand_errors.state as DecimalType + 1)
+			aduroh2_settemp_Run_switch.sendCommand(ON) 
+		} else {
+			aduroh2_settemp_Output_strTimer = createTimer(now.plusMinutes(3), [|
+						logInfo("ADURO", "After 3 try trying again after 3 min and resetting error counter")
+						aduroh2_execcommand_errors.postUpdate(0)
+						aduroh2_settemp_Run_switch.sendCommand(ON)		
+			])
+		}
+	} else {
+		aduroh2_execcommand_errors.postUpdate(0)
 	}
 end
