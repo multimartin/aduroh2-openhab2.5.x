@@ -3,4 +3,3 @@ python /etc/openhab2/nbe/client.py -a 192.168.10.123 -p <password> -s <serial> s
 python /etc/openhab2/nbe/client.py -a 192.168.10.123 -p <password> -s <serial> set settings/boiler/temp %2$s
 python /etc/openhab2/nbe/client.py -a 192.168.10.123 -s <serial> get settings/boiler
 python /etc/openhab2/nbe/client.py -a 192.168.10.123 -s <serial> get operating_data
-python /etc/openhab2/nbe/client.py -a 192.168.10.123 -s <serial> get event_log
