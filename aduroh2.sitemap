@@ -5,17 +5,18 @@ sitemap default label="AduroH2" {
 						Setpoint item=aduroh2_Xsettemp minValue=15 maxValue=25 step=1
 						Default item=AduroH2_AutoAlarmSolveSwitch
 						Default item=AduroH2_NightPause
-						Switch item=AduroH2_InitWoodBurn mappings=[ON="TÆND", OFF="OFF"]
+						Switch item=AduroH2_InitWoodBurn mappings=[ON="TÆND"]
 
 						Text item=aduroh2_opdata_boiler_temp
 						Default item=aduroh2_Xopdata_state_text 
+						Text item=aduroh2_opdata_smoke_temp
 						Text item=AduroH2_Alarm
 						Text item=AduroH2_Switch
-
-						Chart item=AduroTemps period=3D refresh=18000  legend=true
-						Chart item=aduroh2_opdata_smoke_temp period=3D refresh=18000  legend=true 
-						Chart item=aduroh2_opdata_milli_ampere period=3D refresh=18000 legend=true
-						Chart item=aduroh2_opdata_power_pct period=3D refresh=18000  legend=true
+						
+						Chart item=AduroTemps period=D refresh=18000  legend=true
+						Chart item=aduroh2_opdata_smoke_temp period=4h refresh=18000  legend=true 
+						Chart item=aduroh2_opdata_milli_ampere period=4h refresh=18000 legend=true
+						Chart item=aduroh2_opdata_power_pct period=4h refresh=18000  legend=true
 
 			}
 
