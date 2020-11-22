@@ -42,4 +42,3 @@ String		aduroh2_setboiler_Output_str																{channel="exec:command:aduro
 Switch 		aduroh2_settemp_Run_switch 																	{channel="exec:command:aduroh2_set_settemp:run", autoupdate="false"}
 String 		aduroh2_settemp_Run_Args 																	{channel="exec:command:aduroh2_set_settemp:input"}
 String		aduroh2_settemp_Output_str																	{channel="exec:command:aduroh2_set_settemp:output"}
-
