@@ -11,24 +11,33 @@ var Timer InitWoodBurnTimer2 = null
 
 rule "process Aduro InitWoodBurn ON"
 when
-	Item AduroH2_InitWoodBurn changed from OFF to ON
+	Item AduroH2_InitWoodBurn changed from OFF to ON or
+	Item AduroH2_InitWoodBurn received command ON
+
 then
-	aduroh2_InitWoodBurn_Stored_Xonoff_switch.postUpdate(aduroh2_Xonoff_switch.state)	// Store existing state of oven (ON or OFF) so that it can be set back after InitWoodBurn is done/finished
-	aduroh2_InitWoodBurn_Stored_Xsettemp.postUpdate(aduroh2_Xsettemp.state)				// Store existing settemp of oven (degrees) so that it can be set back after InitWoodBurn is done/finished
+
+	if (aduroh2_Xonoff_switch.state == ON) {	// Store existing state of oven (ON or OFF) so that it can be set back after InitWoodBurn is done/finished
+		aduroh2_InitWoodBurn_Stored_Xonoff_switch.sendCommand(ON)
+	} else {
+		aduroh2_InitWoodBurn_Stored_Xonoff_switch.sendCommand(OFF)
+	}
+	val storesettemp = (aduroh2_Xsettemp.state as DecimalType)
+	aduroh2_InitWoodBurn_Stored_Xsettemp.postUpdate(storesettemp)				// Store existing settemp of oven (degrees) so that it can be set back after InitWoodBurn is done/finished
 	
 	if (aduroh2_opdata_smoke_temp.state < 100) {
 		if (aduroh2_opdata_boiler_temp.state > aduroh2_Xsetboiler_temp_Lowerlimit.state) {
-			aduroh2_Xsettemp.sendCommand(aduroh2_opdata_boiler_temp.state + 5)	// Set settemp so high that the oven will start burning
+
+			val calcsettemp = (aduroh2_opdata_boiler_temp.state as DecimalType) + 2
+			aduroh2_Xsettemp.sendCommand(calcsettemp)	// Set settemp so high that the oven will start burning (2 degrees over current room temp)
 		}
 		if (aduroh2_Xonoff_switch.state == OFF) {
 			aduroh2_Xonoff_switch.sendCommand(ON)		// This should turn pellet oven on
 		}
 	} else {
 		logInfo("ADURO", "InitWoodBurn cannot initiate as smoke temp is too high")
-		AduroH2_InitWoodBurn.postUpdate(OFF)			// This should reset the InitWoodBurn (to OFF) and NOT trigger the OFF rule
+		AduroH2_InitWoodBurn.sendCommand(OFF)			// This will reset the InitWoodBurn to OFF
 	}
 	
-
 end
 
 rule "InitWoodBurn check if enough"
@@ -37,35 +46,44 @@ when
 	Item aduroh2_opdata_smoke_temp changed
 then
 	if (aduroh2_opdata_state.state == 5 && aduroh2_opdata_smoke_temp.state > 120 && AduroH2_InitWoodBurn.state == ON) {
-		AduroH2_InitWoodBurn.sendCommand(OFF)		// This will turn InitWoodBurn off when the smoke temp is higher than 120 and the pellet oven is burning normally (state = 5)
-													// as it is then assumed that the oven has been burning for a little while and turned on the wood in the oven.
-													// If this is not enough to start the wood to burn, the 120 degrees needs to be set higher...
-		logInfo("ADURO", "InitWoodBurn completed")
-	}
-end
+		// This will turn InitWoodBurn off when the smoke temp is higher than 120 and the pellet oven is burning normally (state = 5)
+		// as it is then assumed that the oven has been burning for a little while and turned on the wood in the oven.
+		// If this is not enough to start the wood to burn, the 120 degrees needs to be set higher...
 
-rule "process Aduro InitWoodBurn OFF"
-when
-	Item AduroH2_InitWoodBurn changed from ON to OFF
-then
-	logInfo("ADURO", "InitWoodBurn turning off pellet burning")
 
-	AduroH2_set_runstatusOFF.sendCommand(ON)
+		val resetsettemp = (aduroh2_InitWoodBurn_Stored_Xsettemp.state as DecimalType)
+		aduroh2_Xsettemp.sendCommand(resetsettemp)	// Set settemp back to what it was at initburn initiation
 
-	InitWoodBurnTimer1 = createTimer(now.plusMinutes(1), [|
-	// Wait one minute to allow for sync of status
-		if (aduroh2_Xsettemp.state != aduroh2_InitWoodBurn_Stored_Xsettemp.state){
-			aduroh2_Xsettemp.sendCommand(aduroh2_InitWoodBurn_Stored_Xsettemp.state)
-		}
-		InitWoodBurnTimer2 = createTimer(now.plusMinutes(1), [|
-		// Wait one minute to allow for sync of status
-			if (aduroh2_Xonoff_switch.state != aduroh2_InitWoodBurn_Stored_Xonoff_switch.state) {
-				aduroh2_Xonoff_switch.sendCommand(aduroh2_InitWoodBurn_Stored_Xonoff_switch.state)	
+		InitWoodBurnTimer2 = createTimer(now.plusSeconds(10), [|
+		// Wait 10 sec to allow for sync of status
+			if (aduroh2_InitWoodBurn_Stored_Xonoff_switch.state == OFF) {
+				aduroh2_Xonoff_switch.sendCommand(OFF)	
 			}
+			AduroH2_InitWoodBurn.sendCommand(OFF)
 		])
-	])
-	
 
+
+/*
+		AduroH2_set_runstatusOFF.sendCommand(ON)
+
+		InitWoodBurnTimer1 = createTimer(now.plusMinutes(1), [|
+		// Wait one minute to allow for sync of status
+			val resetsettemp = (aduroh2_InitWoodBurn_Stored_Xsettemp.state as DecimalType)
+			aduroh2_Xsettemp.sendCommand(resetsettemp)	// Set settemp back to what it was at initburn initiation
+
+			InitWoodBurnTimer2 = createTimer(now.plusMinutes(1), [|
+			// Wait one minute to allow for sync of status
+				if (aduroh2_InitWoodBurn_Stored_Xonoff_switch.state == ON) {
+					aduroh2_Xonoff_switch.sendCommand(ON)	
+				} else {
+					aduroh2_Xonoff_switch.sendCommand(OFF)	
+				}
+
+				AduroH2_InitWoodBurn.sendCommand(OFF)
+			])
+		])
+*/	
+	}
 end
 
 
@@ -118,6 +136,7 @@ then
 	if (AduroH2_Switch.state == ON) {
 		AduroH2_set_runstatusOFF.sendCommand(ON)
 		logInfo("ADURO", "Status ændret til OFF")
+		AduroH2_Switch.postUpdate(OFF)
 	}
 end
 
